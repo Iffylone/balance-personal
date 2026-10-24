@@ -376,8 +376,19 @@ function pantallaLogin() {
   };
 }
 
-function entrar(u) { sesion = true; usuario = u; vista = 'inicio'; filtroTxt = ''; limite = 60; render(); }
-function bloquear() { sesion = false; pantallaLogin(); }
+const KS = 'iffyware_sesion', KA = 'iffyware_autolock';
+const AUTOLOCK = [[0, 'Siempre pedir clave'], [5, '5 minutos'], [15, '15 minutos'], [60, '1 hora'], [240, '4 horas'], [1440, '24 horas'], [525600, 'Nunca (solo con Bloquear)']];
+const getAuto = () => { try { const v = localStorage.getItem(KA); return v === null ? 60 : +v; } catch (e) { return 60; } };
+function marcarSesion() { if (sesion) try { localStorage.setItem(KS, JSON.stringify({ u: usuario, t: Date.now() })); } catch (e) { /* opcional */ } }
+function sesionVigente() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KS) || 'null'), lim = getAuto();
+    if (s && lim > 0 && s.u === cfgGet('admin_user') && Date.now() - s.t < lim * 60000) return s.u;
+  } catch (e) { /* sin sesión */ }
+  return null;
+}
+function entrar(u) { sesion = true; usuario = u; vista = 'inicio'; filtroTxt = ''; limite = 60; marcarSesion(); render(); }
+function bloquear() { sesion = false; try { localStorage.removeItem(KS); } catch (e) { /* opcional */ } $('#overlay').classList.remove('on'); $('#overlay').innerHTML = ''; pantallaLogin(); }
 
 // ---------- marco general ----------
 const NAV = [['inicio', '🏠', 'Inicio'], ['reportes', '📄', 'Reportes'], ['analisis', '📊', 'Análisis'], ['deudas', '💳', 'Deudas'], ['mas', '☰', 'Más']];
@@ -671,7 +682,9 @@ function vDatos() {
     <h2>Respaldo</h2><p style="color:var(--mut);font-size:14px">El archivo es compatible con la versión de PC (Importar / Exportar). Hacé un respaldo seguido: si borrás los datos del navegador, se pierde todo.</p>
     <button class="btn verde" id="x_exp">Exportar respaldo (.json)</button><br><br>
     <button class="btn" id="x_imp">Importar respaldo…</button><input type="file" id="x_file" accept=".json,application/json" hidden>
-    <h2>Seguridad</h2><button class="btn gris" id="x_pass">Cambiar contraseña</button><br><br>
+    <h2>Seguridad</h2><label>Bloqueo automático (pide usuario y contraseña después de este tiempo fuera de la app)</label>
+    <select id="x_auto">${AUTOLOCK.map(([v, t]) => `<option value="${v}"${v === getAuto() ? ' selected' : ''}>${t}</option>`).join('')}</select>
+    <button class="btn gris" id="x_pass">Cambiar contraseña</button><br><br>
     <button class="btn gris" id="x_key">Generar nueva clave de recuperación</button><br><br>
     <button class="btn rojo" id="x_lock">Bloquear / salir</button>
     <p style="color:var(--mut);font-size:12px;margin-top:20px">${D.movimientos.length} movimientos · ${D.cuentas.length} cuentas · ${D.cuentas_por_pagar.length} deudas · usuario: ${esc(usuario)}</p>`);
@@ -689,6 +702,7 @@ function vDatos() {
       };
     });
   };
+  $('#x_auto').onchange = e => { try { localStorage.setItem(KA, e.target.value); } catch (err) { /* opcional */ } marcarSesion(); };
   $('#x_pass').onclick = () => sheet('Cambiar contraseña', `<label>Contraseña actual</label><input id="p_a" type="password"><label>Contraseña nueva</label><input id="p_n" type="password"><label>Repetir nueva</label><input id="p_r" type="password"><button class="btn verde" id="p_ok">Cambiar</button>`, (b, close) => {
     $('#p_ok', b).onclick = async () => {
       try {
@@ -710,6 +724,13 @@ function arrancar() {
   cargar();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* opcional */ }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
-  isConfigured() ? pantallaLogin() : pantallaSetup();
+  const u = isConfigured() ? sesionVigente() : null;
+  if (u) entrar(u); else isConfigured() ? pantallaLogin() : pantallaSetup();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') marcarSesion();
+    else if (sesion) { if (sesionVigente()) marcarSesion(); else bloquear(); }
+  });
+  ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, marcarSesion, { passive: true }));
+  window.addEventListener('pagehide', marcarSesion);
 }
 if (typeof window !== 'undefined' && !window.__TEST__) arrancar();

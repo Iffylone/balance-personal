@@ -18,3 +18,12 @@ IMPORTANTE
 - Los datos viven solo en el celular (no hay nube). Si se borran los datos del navegador/app, se pierden: exportar respaldo seguido.
 - Cada dispositivo es independiente: PC y celular NO se sincronizan solos, se pasan por respaldo.
 - Si modificas archivos, cambiar la version V en sw.js (ej. balance-v2) para que el celular actualice.
+
+ACTUALIZAR LA APP (cuando recibas archivos nuevos)
+- GitHub: repositorio > Add file > Upload files > arrastrar los archivos nuevos (reemplazan a los viejos) > Commit changes.
+- Esperar 1-2 minutos. En el celular, cerrar la app por completo (quitarla de apps recientes) y abrirla 2 veces.
+- Los datos NO se pierden al actualizar.
+
+BLOQUEO AUTOMATICO
+- Por defecto la app pide usuario y contrasena despues de 1 hora fuera de ella.
+- Se cambia en: Mas > Respaldo y seguridad > Bloqueo automatico.

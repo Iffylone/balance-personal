@@ -1,4 +1,4 @@
-const V = 'balance-v1';
+const V = 'balance-v2';
 const ARCHIVOS = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest',
   './assets/icon_192.png', './assets/icon_512.png', './assets/logo_small.png'];
 self.addEventListener('install', e => {
@@ -10,9 +10,8 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
-    const copia = resp.clone();
-    caches.open(V).then(c => c.put(e.request, copia));
+  e.respondWith(fetch(e.request).then(resp => {
+    if (resp && resp.ok) { const copia = resp.clone(); caches.open(V).then(c => c.put(e.request, copia)); }
     return resp;
-  }).catch(() => caches.match('./index.html'))));
+  }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
 });
