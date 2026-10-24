@@ -1,0 +1,20 @@
+BALANCE PERSONAL - VERSION ANDROID (app instalable, funciona sin internet)
+
+INSTALAR EN EL CELULAR (una sola vez)
+1. En GitHub (usuario Iffylone) crear un repositorio PUBLICO nuevo: balance-personal
+2. Subir TODOS los archivos de esta carpeta a la raiz del repositorio (index.html, app.js, style.css, sw.js, manifest.webmanifest, carpeta assets). No subir respaldos .json.
+3. Settings > Pages > Source: "Deploy from a branch" > Branch: main > Folder: /(root) > Save
+4. Esperar 1-2 minutos. La direccion queda: https://iffylone.github.io/balance-personal/
+5. Abrir esa direccion en Chrome del celular > menu (3 puntos) > "Instalar app" (o "Agregar a pantalla principal").
+   Queda un icono en el celular que abre la app a pantalla completa y funciona sin internet.
+
+PASAR LOS DATOS DE LA PC AL CELULAR
+- PC: Sistema Contable > Respaldo > Exportar (genera un .json). Enviarlo al celular (WhatsApp, Drive, cable).
+- Celular, primera vez: en la pantalla de configuracion tocar "Ya tengo un respaldo de la PC: importarlo". Se entra con el mismo usuario y contrasena de la PC.
+- Celular, ya en uso: Mas > Respaldo y seguridad > Importar respaldo.
+- Del celular a la PC: Exportar respaldo en el celular, e Importar en la PC.
+
+IMPORTANTE
+- Los datos viven solo en el celular (no hay nube). Si se borran los datos del navegador/app, se pierden: exportar respaldo seguido.
+- Cada dispositivo es independiente: PC y celular NO se sincronizan solos, se pasan por respaldo.
+- Si modificas archivos, cambiar la version V en sw.js (ej. balance-v2) para que el celular actualice.
