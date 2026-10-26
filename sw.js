@@ -1,4 +1,4 @@
-const V = 'balance-v2';
+const V = 'balance-v4';
 const ARCHIVOS = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest',
   './assets/icon_192.png', './assets/icon_512.png', './assets/logo_small.png'];
 self.addEventListener('install', e => {

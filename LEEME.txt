@@ -27,3 +27,17 @@ ACTUALIZAR LA APP (cuando recibas archivos nuevos)
 BLOQUEO AUTOMATICO
 - Por defecto la app pide usuario y contrasena despues de 1 hora fuera de ella.
 - Se cambia en: Mas > Respaldo y seguridad > Bloqueo automatico.
+
+NOVEDADES (version 3)
+- Cuentas libres: al configurar cada usuario crea sus propias cuentas (nombre y saldo).
+- Transferencias entre cuentas: boton violeta "Transf." en Inicio. No cuenta como ingreso ni gasto.
+- Listados en orden alfabetico (beneficiarios, categorias, descripciones) y la descripcion se autocompleta.
+- Entrada rapida: el usuario queda recordado y solo se pide la contrasena. Si el celular tiene huella o rostro,
+  la app ofrece activarlo al entrar con la contrasena (tambien en Mas > Respaldo y seguridad > Activar huella / rostro).
+  La huella/rostro la verifica el propio telefono. Si falla, siempre queda la contrasena.
+- Los respaldos .json son compatibles con la nueva version de PC (incluyen las transferencias).
+  Actualiza PC y celular juntos.
+
+SINCRONIZACION CON LA PC (version 4)
+- Mas > Respaldo y seguridad > Conectar a la nube. Guia completa en LEEME_NUBE.txt (y script sync_supabase.sql).
+- Indicador junto al titulo: ☁ ✓ sincronizado, ☁ ✗ error (tocalo para ver), ☁ … sincronizando.

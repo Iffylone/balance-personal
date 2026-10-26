@@ -32,11 +32,12 @@ label{font-size:13px;color:var(--mut);display:block}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tk{display:flex;gap:10px;align-items:center;background:var(--card);border-left:4px solid;border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .tk.ingreso{border-color:var(--verde)}.tk.gasto{border-color:var(--rojo)}
+.tk.transf{border-color:#7C5CFC}.tk.transf .v{color:#b9a7ff}
 .tk .m{flex:1;min-width:0}.tk .m b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tk .m small{color:var(--mut);font-size:12px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tk .v{font-weight:700;white-space:nowrap}.tk.ingreso .v{color:#6fd69b}.tk.gasto .v{color:#ff8f8f}
 .fab{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));display:flex;gap:10px;justify-content:center;padding:0 14px;z-index:6;max-width:900px;margin:0 auto}
-.fab button{flex:1;border:0;border-radius:14px;padding:14px;color:#fff;font-size:16px;font-weight:700;box-shadow:0 4px 14px #0008}
+.fab button{flex:1;border:0;border-radius:14px;padding:14px 4px;color:#fff;font-size:15px;font-weight:700;box-shadow:0 4px 14px #0008}
 nav{position:fixed;left:0;right:0;bottom:0;background:#0d1017;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:7}
 nav button{flex:1;background:none;border:0;color:var(--mut);padding:9px 0 8px;font-size:11px}
 nav button span{display:block;font-size:20px}
@@ -66,3 +67,4 @@ th,td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line)}th:fi
 .pos{color:#6fd69b}.neg{color:#ff8f8f}
 .vacio{color:var(--mut);text-align:center;padding:24px}
 @media(min-width:700px){.cards{grid-template-columns:repeat(4,1fr)}}
+.nube{color:var(--mut);font-size:13px;padding:6px 8px;cursor:pointer}

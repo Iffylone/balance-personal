@@ -1,0 +1,37 @@
+SINCRONIZACION AUTOMATICA PC <-> CELULAR (una sola configuracion, 10 minutos)
+
+Para que lo que cargues en la PC aparezca solo en el celular (y al reves) los datos pasan por una base en internet
+gratuita: Supabase. Cada usuario ve unicamente sus propios datos. Los datos viajan cifrados (HTTPS).
+Nota de privacidad: no estan cifrados "de punta a punta"; el proveedor (Supabase) tecnicamente podria acceder a la base.
+La app sigue funcionando sin internet: cuando vuelve la conexion se pone al dia sola.
+
+PARTE 1 - Crear la base en Supabase (se hace UNA vez, en la PC)
+1. Entra a https://supabase.com y crea una cuenta gratis (Sign up).
+2. "New project": nombre (ej. balance), una contrasena de base de datos (guardala), region cercana (South America - Sao Paulo). Espera ~2 minutos.
+3. Menu izquierdo > SQL Editor > New query. Abre el archivo sync_supabase.sql (o en la PC: Sincronizacion en la nube > "Copiar script SQL para Supabase"), pega todo el contenido y toca Run. Debe decir "Success".
+4. Menu izquierdo > Authentication > Sign In / Providers (o Providers) > Email: DESACTIVA "Confirm email" y guarda.
+5. Project Settings (engranaje) > API (o "API Keys"): copia
+   - Project URL  (https://xxxxxxxx.supabase.co)
+   - la clave "anon public" (en Supabase nuevo puede llamarse "Publishable key"; si ves una pestana "Legacy API keys" usa la anon).
+
+PARTE 2 - Conectar la PC
+1. Instala/actualiza el sistema en la PC (ver LEEME_PC.txt) e ingresa.
+2. Menu lateral > "Sincronizacion en la nube".
+3. Pega URL y clave, escribe tu correo y una contrasena para la nube (distinta a la de la app), marca "Es la primera vez: crear mi cuenta" y toca Conectar.
+   La PC sube todos tus datos. Arriba, el titulo muestra "☁ sincronizado".
+
+PARTE 3 - Conectar el celular
+1. En la PC: Sincronizacion en la nube > "Copiar código para conectar el celular". Envialo al celular por WhatsApp (no incluye contrasenas).
+2. En el celular (app actualizada): Mas > Respaldo y seguridad > "Conectar a la nube".
+3. Pega el codigo (se rellenan URL, clave y correo), escribe la contrasena de la nube y toca Conectar.
+   Como la nube ya tiene tus datos, el celular reemplaza los suyos por los de la nube y queda igual a la PC.
+   Si el celular es nuevo, en la primera pantalla toca "Ya uso la nube: traer mis datos".
+4. Entras con el mismo usuario y contrasena de siempre.
+
+COMO FUNCIONA
+- PC: se sincroniza sola cada 20 segundos. Celular: 3 segundos despues de cada cambio, al abrir la app y cada 30 segundos.
+- Si editas el mismo movimiento en los dos equipos a la vez, gana el cambio mas reciente. Los relojes de PC y celular deben estar en hora.
+- Borrar en un equipo borra en todos. Las transferencias entre cuentas viajan completas.
+- Importar un respaldo .json en un equipo reemplaza datos y esos cambios tambien se sincronizan a los demas.
+- Un equipo nuevo se conecta con el mismo correo y contrasena de la nube y baja todo.
+- Para otro usuario/cliente: que use SU propio correo de nube (o su propio proyecto Supabase). Sus datos quedan separados.
