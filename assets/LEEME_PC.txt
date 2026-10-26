@@ -1,0 +1,19 @@
+ACTUALIZACION DEL SISTEMA DE PC (SistContiffy)
+
+QUE CAMBIA
+1. Cuentas libres: al configurar por primera vez cada usuario crea SUS cuentas (nombre y saldo). Ya no estan fijas Santander / Personal Pay. "+ Agregar otra cuenta" para mas.
+2. Transferencias entre cuentas: boton "Transferir" (violeta) y menu lateral. Mueve dinero de una cuenta a otra; NO cuenta como ingreso ni gasto (no altera reportes, analisis ni promedios). Se ve en la tabla como "Transf." Para corregir una transferencia: Eliminar y volver a crearla.
+3. Listados en orden alfabetico (beneficiarios, categorias, descripciones). En Descripcion ahora tambien se autocompleta con lo escrito antes.
+4. Login: el usuario queda guardado y solo se pide la contrasena.
+5. NUEVO: Sincronizacion automatica PC <-> celular por la nube (Supabase gratis). Menu lateral > "Sincronizacion en la nube". Guia paso a paso en LEEME_NUBE.txt (incluye sync_supabase.sql). Sin configurarla, el sistema funciona igual que antes.
+6. Titulo de la ventana: "Balance personal".
+Tus datos actuales NO se tocan: la base se actualiza sola al abrir (agrega una columna).
+
+COMO APLICARLO (en la carpeta de tu proyecto, donde esta main.py)
+1. Cerra el sistema.
+2. Copia estos archivos reemplazando los existentes: app.py, db.py, sync.py (nuevo), generar_exe.bat, ACTUALIZAR.bat y SistContiffy.spec (borra el SistemaContableIffyware.spec viejo).
+3. Ejecuta generar_exe.bat -> crea dist\SistContiffy.exe.
+4. Para el instalador (otras PCs): instala NSIS (gratis) y ejecuta crear_instalador.bat -> crea Instalador_SistContiffy.exe. Copia la carpeta "instalador" junto a este .bat.
+5. Para usarlo vos: reemplaza el SistContiffy.exe instalado (en %LOCALAPPDATA%\Programs\SistemaContableIffyware) por el nuevo; contabilidad.db queda igual.
+
+IMPORTANTE: los respaldos .json nuevos incluyen las transferencias. Un respaldo nuevo importado en una version vieja las veria como un gasto y un ingreso sueltos: actualiza PC y celular juntos.
