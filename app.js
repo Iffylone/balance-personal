@@ -34,6 +34,7 @@ const COLORES = ['#E5484D', '#F59E0B', '#4F8CFF', '#7C5CFC', '#2FA36B', '#E91E63
 
 // ---------- almacenamiento ----------
 const KEY = 'iffyware_contable_v1';
+const VERSION = '2026.10.26';
 let D;
 const vacio = () => ({ config: {}, movimientos: [], cuentas_por_pagar: [], cuentas: [], beneficiarios: [], seq: { m: 0, d: 0, c: 0, b: 0 } });
 function cargar() {
@@ -48,6 +49,12 @@ function guardar(sinSync) {
   if (!sinSync && D.sync && D.sync.refresh) programarSync();
 }
 const nid = k => ++D.seq[k];
+// Antes de importar, limpiar repetidos o bajar de la nube se guarda una copia: "Deshacer" la recupera.
+function guardarPrevio(motivo) { try { localStorage.setItem(KEY + '_prev', JSON.stringify({ t: Date.now(), m: motivo, d: D })); } catch (e) { /* sin espacio: se sigue igual */ } }
+function previo() { try { return JSON.parse(localStorage.getItem(KEY + '_prev') || 'null'); } catch (e) { return null; } }
+function restaurarPrevio() { const p = previo(); if (!p) return false; D = p.d; guardar(true); return true; }
+function marcarRespaldo() { D.ultimoRespaldo = Date.now(); guardar(true); }
+function exportarRespaldo() { descargar(`respaldo_contable_${hoyIso().replace(/-/g, '')}.json`, exportJson(), 'application/json'); marcarRespaldo(); }
 const cfgGet = (k, def = null) => (k in D.config ? D.config[k] : def);
 const cfgSet = (k, v) => { D.config[k] = String(v); guardar(); };
 const isConfigured = () => cfgGet('admin_user') !== null;
@@ -233,10 +240,38 @@ function resumenMensual(desde, hasta, max = 12) {
 
 // ---------- respaldo (formato compatible con la version de escritorio) ----------
 const exportJson = () => JSON.stringify({ config: D.config, movimientos: D.movimientos, cuentas_por_pagar: D.cuentas_por_pagar, cuentas: D.cuentas, exportado_en: nowIso() }, null, 2);
+// Identidad de un movimiento: todos sus datos + el instante exacto en que se registró (creado_en).
+// Una restauración trae el mismo creado_en; dos compras distintas e iguales nunca lo comparten.
+const nl = v => norm(String(v == null ? '' : v)).toLowerCase();
+const monto2 = v => (Math.round((Number(v) || 0) * 100) / 100).toFixed(2);
+const firmaLaxa = m => [m.fecha || '', m.tipo || '', nl(m.categoria), nl(m.descripcion), nl(m.origen_destino), nl(m.forma_pago), nl(m.cuenta), monto2(m.monto)].join('|');
+const firmaMov = m => firmaLaxa(m) + '|' + (m.creado_en || '');
+const firmaDeuda = d => [nl(d.tipo), nl(d.descripcion), nl(d.acreedor), monto2(d.monto_total), d.creado_en || ''].join('|');
+const contar = (lista, f) => { const c = new Map(); for (const x of lista) { const k = f(x); c.set(k, (c.get(k) || 0) + 1); } return c; };
+
 function importJson(texto, modo) {
   const data = JSON.parse(texto);
+  guardarPrevio(modo === 'reemplazar' ? 'reemplazar con un respaldo' : 'importar un respaldo');
   if (typeof data !== 'object' || !data || (!data.movimientos && !data.cuentas && !data.config)) throw new Error('El archivo no es un respaldo válido.');
   if (modo === 'reemplazar') { D.movimientos = []; D.cuentas_por_pagar = []; D.cuentas = []; D.beneficiarios = []; }
+  // qué ya existe, para no repetirlo
+  const exE = contar(D.movimientos, firmaMov), exL = contar(D.movimientos, firmaLaxa), exD = contar(D.cuentas_por_pagar, firmaDeuda);
+  const toma = (mapa, k) => { if ((mapa.get(k) || 0) > 0) { mapa.set(k, mapa.get(k) - 1); return true; } return false; };
+  const existe = m => (m.creado_en ? (exE.get(firmaMov(m)) || 0) > 0 : (exL.get(firmaLaxa(m)) || 0) > 0);
+  const consume = m => { if (m.creado_en) toma(exE, firmaMov(m)); toma(exL, firmaLaxa(m)); };
+  const todos = data.movimientos || [], omitir = new Set();
+  todos.forEach((m, i) => { if (m.transferencia_id == null && existe(m)) { consume(m); omitir.add(i); } });
+  const pares = {};
+  todos.forEach((m, i) => { if (m.transferencia_id != null) (pares[m.transferencia_id] = pares[m.transferencia_id] || []).push(i); });
+  for (const idxs of Object.values(pares)) {   // una transferencia se omite completa o no se omite
+    const cE = new Map(exE), cL = new Map(exL); let todaExiste = true;
+    for (const i of idxs) {
+      const m = todos[i];
+      if (m.creado_en ? toma(cE, firmaMov(m)) : toma(cL, firmaLaxa(m))) continue;
+      todaExiste = false; break;
+    }
+    if (todaExiste) for (const i of idxs) { consume(todos[i]); omitir.add(i); }
+  }
   for (const [k, v] of Object.entries(data.config || {})) D.config[k] = String(v);
   for (const c of data.cuentas || []) {
     const ex = D.cuentas.find(x => x.nombre === c.nombre);
@@ -244,14 +279,51 @@ function importJson(texto, modo) {
     else D.cuentas.push({ id: nid('c'), nombre: c.nombre, saldo_inicial: c.saldo_inicial || 0, creado_en: c.creado_en || nowIso() });
   }
   const mapaT = {};   // id de transferencia del respaldo -> id nuevo
-  for (const m of data.movimientos || []) {
+  let nuevos = 0;
+  todos.forEach((m, i) => {
+    if (omitir.has(i)) return;
     const fila = { id: nid('m'), fecha: m.fecha, tipo: m.tipo, categoria: m.categoria, descripcion: m.descripcion || '', origen_destino: m.origen_destino || '', forma_pago: m.forma_pago || '', cuenta: m.cuenta || '', monto: m.monto, transferencia_id: null, creado_en: m.creado_en || nowIso() };
     if (m.transferencia_id != null) { if (!(m.transferencia_id in mapaT)) mapaT[m.transferencia_id] = fila.id; fila.transferencia_id = mapaT[m.transferencia_id]; }
-    D.movimientos.push(fila);
+    D.movimientos.push(fila); nuevos++;
+    if (m.transferencia_id == null) upsertBenef(m.origen_destino || '', m.tipo, m.categoria, m.forma_pago || '', m.cuenta || '', m.fecha, 1);
+  });
+  let deudasNuevas = 0, deudasOmitidas = 0;
+  for (const d of data.cuentas_por_pagar || []) {
+    if (toma(exD, firmaDeuda(d))) { deudasOmitidas++; continue; }
+    deudasNuevas++;
+    D.cuentas_por_pagar.push({ id: nid('d'), tipo: d.tipo, descripcion: d.descripcion, acreedor: d.acreedor || '', monto_total: d.monto_total, monto_pagado: d.monto_pagado || 0, fecha_vencimiento: d.fecha_vencimiento || null, estado: d.estado || 'pendiente', creado_en: d.creado_en || nowIso() });
   }
-  for (const m of (data.movimientos || []).filter(x => x.transferencia_id == null)) upsertBenef(m.origen_destino || '', m.tipo, m.categoria, m.forma_pago || '', m.cuenta || '', m.fecha, 1);
-  for (const d of data.cuentas_por_pagar || []) D.cuentas_por_pagar.push({ id: nid('d'), tipo: d.tipo, descripcion: d.descripcion, acreedor: d.acreedor || '', monto_total: d.monto_total, monto_pagado: d.monto_pagado || 0, fecha_vencimiento: d.fecha_vencimiento || null, estado: d.estado || 'pendiente', creado_en: d.creado_en || nowIso() });
   guardar();
+  return { nuevos, omitidos: omitir.size, deudasNuevas, deudasOmitidas };
+}
+// Copias exactas (mismos datos y misma hora de registro): típico de restaurar un respaldo dos veces.
+function buscarRepetidos() {
+  const sobran = [], vistos = new Set(), porTid = {};
+  for (const m of D.movimientos) {
+    if (m.transferencia_id != null) { (porTid[m.transferencia_id] = porTid[m.transferencia_id] || []).push(m); continue; }
+    if (!m.creado_en) continue;
+    const f = firmaMov(m); if (vistos.has(f)) sobran.push(m); else vistos.add(f);
+  }
+  const parVisto = new Set(), tids = [];
+  for (const tid of Object.keys(porTid).map(Number).sort((a, b) => a - b)) {
+    const legs = porTid[tid]; if (legs.some(l => !l.creado_en)) continue;
+    const clave = legs.map(firmaMov).sort().join('##');
+    if (parVisto.has(clave)) { tids.push(tid); sobran.push(...legs); } else parVisto.add(clave);
+  }
+  const deudasSobran = [], vistas = new Map();
+  for (const d of D.cuentas_por_pagar) {
+    if (!d.creado_en) continue; const f = firmaDeuda(d), previa = vistas.get(f);
+    if (!previa) vistas.set(f, d);
+    else if ((d.monto_pagado || 0) > (previa.monto_pagado || 0)) { deudasSobran.push(previa); vistas.set(f, d); } else deudasSobran.push(d);
+  }
+  const suma = t => sobran.filter(m => m.tipo === t && m.transferencia_id == null).reduce((a, m) => a + m.monto, 0);
+  return { movimientos: sobran, deudas: deudasSobran, tids, montoGastos: suma('gasto'), montoIngresos: suma('ingreso') };
+}
+function eliminarRepetidos() {
+  guardarPrevio('limpiar repetidos');
+  const r = buscarRepetidos(), ids = new Set(r.movimientos.map(m => m.id)), dids = new Set(r.deudas.map(d => d.id));
+  D.movimientos = D.movimientos.filter(m => !ids.has(m.id)); D.cuentas_por_pagar = D.cuentas_por_pagar.filter(d => !dids.has(d.id)); guardar();
+  return [r.movimientos.length, r.deudas.length];
 }
 const csvCelda = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 function csvDe(filas) {
@@ -380,7 +452,7 @@ async function nubeIniciar(url, key, email, pass, crear) {
 }
 async function nubeHayDatos() { const r = await nubeFetch('GET', '/rest/v1/sync_records?select=uid&limit=1'); return !!(r && r.length); }
 function nubeDesconectar() { const st = SS(); for (const k of ['access', 'refresh', 'exp', 'userId', 'ultima']) delete st[k]; st.seq = 0; st.m = {}; guardar(true); pintarNube(); }
-function nubeReemplazarLocal() { D.movimientos = []; D.cuentas = []; D.cuentas_por_pagar = []; D.beneficiarios = []; const st = SS(); st.m = {}; st.seq = 0; guardar(true); }
+function nubeReemplazarLocal() { guardarPrevio('traer datos de la nube'); D.movimientos = []; D.cuentas = []; D.cuentas_por_pagar = []; D.beneficiarios = []; const st = SS(); st.m = {}; st.seq = 0; guardar(true); }
 function codigoPC(texto) {
   const t = (texto || '').trim(); if (!t.startsWith('BAL1:')) throw new Error('El código no es válido.');
   try { const d = JSON.parse(decodeURIComponent(escape(atob(t.slice(5).replace(/-/g, '+').replace(/_/g, '/'))))); return [d.u, d.k, d.e || '']; }
@@ -631,7 +703,10 @@ function pantallaLogin(auto) {
     <input id="l_pass" type="password" placeholder="Contraseña" autocomplete="current-password">
     <button class="btn" id="l_ok">Ingresar</button>
     ${bioActivo() ? '<button class="btn gris" id="l_bio" style="margin-top:10px">👆 Entrar con huella / rostro</button>' : ''}
-    <button class="link" id="l_olv">¿Olvidaste tu contraseña?</button>`);
+    <button class="link" id="l_olv">¿Olvidaste tu contraseña?</button>
+    <button class="link" id="l_imp">Restaurar datos desde un respaldo (.json)</button>
+    <input type="file" id="l_file" accept=".json,application/json" hidden>
+    <p style="font-size:11px;margin-top:10px">Versión ${VERSION}</p>`);
   const intentar = async () => {
     try {
       if (await verificarLogin(u, $('#l_pass').value)) { usuario = u; await ofrecerBio(); entrar(u); }
@@ -641,6 +716,13 @@ function pantallaLogin(auto) {
   const porBio = async silencioso => {
     try { if (await bioEntrar()) entrar(u); }
     catch (e) { if (!silencioso) alerta('No se pudo verificar la huella o el rostro. Usá la contraseña.'); }
+  };
+  $('#l_imp').onclick = () => $('#l_file').click();
+  $('#l_file').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (!confirm('Se reemplazarán los datos de este teléfono por los del respaldo. (Antes se guarda una copia por si querés deshacer.) ¿Continuar?')) return;
+    try { const r = importJson(await f.text(), 'reemplazar'); alerta(`Datos restaurados: ${D.movimientos.length} movimientos. Entrá con tu usuario y contraseña.`); pantallaLogin(false); }
+    catch (err) { alerta('No se pudo restaurar: ' + err.message); }
   };
   if ($('#l_bio')) { $('#l_bio').onclick = () => porBio(false); if (auto === true) setTimeout(() => porBio(true), 350); }
   $('#l_ok').onclick = intentar;
@@ -747,10 +829,12 @@ function vInicio() {
       ${card('NETO (DISP. − DEUDAS)', dinero(neto), 'Lo que realmente te queda', '#2FA36B', neto >= 0 ? '#6fd69b' : '#ff8f8f')}
       ${card('GASTO PROMEDIO / DÍA', dinero(st.promedio), `7 días: ${dinero(st.prom7)}\nHoy: ${dinero(st.hoy)}`, '#E5484D')}
     </div>
+    ${(!nubeConectada() && D.movimientos.length && (!D.ultimoRespaldo || Date.now() - D.ultimoRespaldo > 7 * 864e5)) ? '<div class="lst" style="border-color:var(--amb)"><b>⚠ Hace más de una semana que no hacés un respaldo.</b><br><small>Si se borran los datos del navegador se pierde todo.</small><div class="acts"><button class="btn sm amb" id="av_resp">Hacer respaldo ahora</button></div></div>' : ''}
     <div class="chips">${cu.map(c => `<div class="chip">${esc(c.nombre)}<b class="${c.saldo_actual < 0 ? 'neg' : ''}">${dinero(c.saldo_actual)}</b></div>`).join('')}</div>
     <div class="bar"><h2 style="margin:0">Movimientos</h2><span id="cant"></span></div>
     <input id="busca" placeholder="Buscar (beneficiario, categoría, detalle…)" value="${esc(filtroTxt)}">
     <div id="lista"></div>`, true);
+  if ($('#av_resp')) $('#av_resp').onclick = () => { exportarRespaldo(); render(); };
   $('#busca').oninput = e => { filtroTxt = e.target.value; limite = 60; pintarLista(); };
   pintarLista();
 }
@@ -1027,18 +1111,34 @@ function vDatos() {
   marco('Respaldo y seguridad', '', `
     <h2>Nube (sincronización automática)</h2><p style="color:var(--mut);font-size:14px">${nubeConectada() ? '☁ Conectado: ' + esc(D.sync.email) : 'PC y celular iguales sin exportar ni importar.'}</p>
     <button class="btn" id="x_nube">${nubeConectada() ? 'Ver estado / sincronizar ahora' : 'Conectar a la nube'}</button>
-    <h2>Respaldo</h2><p style="color:var(--mut);font-size:14px">El archivo es compatible con la versión de PC (Importar / Exportar). Hacé un respaldo seguido: si borrás los datos del navegador, se pierde todo.</p>
+    <h2>Respaldo</h2><button class="btn gris" id="x_rep">Buscar movimientos repetidos</button><p style="color:var(--mut);font-size:14px">El archivo es compatible con la versión de PC (Importar / Exportar). Hacé un respaldo seguido: si borrás los datos del navegador, se pierde todo.</p>
     <button class="btn verde" id="x_exp">Exportar respaldo (.json)</button><br><br>
     <button class="btn" id="x_imp">Importar respaldo…</button><input type="file" id="x_file" accept=".json,application/json" hidden>
+    ${previo() ? `<br><br><button class="btn gris" id="x_undo">↩ Deshacer: volver a como estaba antes de «${esc(previo().m)}» (${esc(new Date(previo().t).toLocaleString('es'))})</button>` : ''}
     <h2>Seguridad</h2><label>Bloqueo automático (pide usuario y contraseña después de este tiempo fuera de la app)</label>
     <select id="x_auto">${AUTOLOCK.map(([v, t]) => `<option value="${v}"${v === getAuto() ? ' selected' : ''}>${t}</option>`).join('')}</select>
     <div id="x_biow"></div>
     <button class="btn gris" id="x_pass">Cambiar contraseña</button><br><br>
     <button class="btn gris" id="x_key">Generar nueva clave de recuperación</button><br><br>
     <button class="btn rojo" id="x_lock">Bloquear / salir</button>
-    <p style="color:var(--mut);font-size:12px;margin-top:20px">${D.movimientos.length} movimientos · ${D.cuentas.length} cuentas · ${D.cuentas_por_pagar.length} deudas · usuario: ${esc(usuario)}</p>`);
+    <p style="color:var(--mut);font-size:12px;margin-top:20px">${D.movimientos.length} movimientos · ${D.cuentas.length} cuentas · ${D.cuentas_por_pagar.length} deudas · usuario: ${esc(usuario)} · versión ${VERSION}</p>`);
   $('#x_nube').onclick = () => sheetNube(() => render());
-  $('#x_exp').onclick = () => descargar(`respaldo_contable_${hoyIso().replace(/-/g, '')}.json`, exportJson(), 'application/json');
+  if ($('#x_undo')) $('#x_undo').onclick = () => { if (confirm('Se vuelve a como estaban los datos antes de esa acción. ¿Continuar?')) { restaurarPrevio(); alerta('Listo, datos restaurados.'); render(); } };
+  $('#x_rep').onclick = () => {
+    const r = buscarRepetidos();
+    if (!r.movimientos.length && !r.deudas.length) return alerta('No se encontraron movimientos ni deudas repetidos.');
+    const lista = r.movimientos.slice(0, 150).map(m => `<div class="tk ${m.transferencia_id != null ? 'transf' : m.tipo}"><div class="m"><b>${esc(m.origen_destino || m.categoria)}</b><small>${esc(m.categoria)}${m.descripcion ? ' · ' + esc(m.descripcion) : ''}</small><small>${isoDisp(m.fecha)} · ${esc(m.cuenta || '-')}</small></div><div class="v">${dinero(m.monto)}</div></div>`).join('');
+    sheet('Movimientos repetidos', `<p>Se encontraron <b>${r.movimientos.length}</b> movimientos repetidos${r.tids.length ? ` (incluye ${r.tids.length} transferencia/s completa/s)` : ''} y <b>${r.deudas.length}</b> deuda/s repetida/s.</p>
+      <p style="color:var(--mut);font-size:14px">Son copias EXACTAS (mismos datos y misma hora de registro), típicas de restaurar un respaldo dos veces. Se conserva una de cada una. Antes se descarga una copia de seguridad.<br>Gastos que sobran: ${dinero(r.montoGastos)} · Ingresos que sobran: ${dinero(r.montoIngresos)}</p>
+      <button class="btn rojo" id="rp_ok">Eliminar los repetidos</button><br><br>${lista}${r.movimientos.length > 150 ? '<div class="vacio">…y más.</div>' : ''}`, (b, close) => {
+      $('#rp_ok', b).onclick = () => {
+        if (!confirm('Se eliminarán SOLO estas copias repetidas y se conserva una de cada una. ¿Continuar?')) return;
+        descargar(`respaldo_antes_de_limpiar_${hoyIso().replace(/-/g, '')}.json`, exportJson(), 'application/json'); marcarRespaldo();
+        const [nm, nd] = eliminarRepetidos(); close(); alerta(`Se eliminaron ${nm} movimientos y ${nd} deuda/s repetidos. Se descargó una copia de seguridad previa.`); render();
+      };
+    });
+  };
+  $('#x_exp').onclick = () => { exportarRespaldo(); alerta('Respaldo descargado. Buscalo en la carpeta Descargas del celular.'); };
   $('#x_imp').onclick = () => $('#x_file').click();
   $('#x_file').onchange = async e => {
     const f = e.target.files[0]; if (!f) return; let txt;
@@ -1048,7 +1148,7 @@ function vDatos() {
       $('#i_ok', b).onclick = () => {
         const modo = $('#i_modo', b).value;
         if (modo === 'reemplazar' && !confirm('Se borrarán los datos actuales de este teléfono. ¿Continuar?')) return;
-        try { importJson(txt, modo); close(); alerta('Respaldo importado.'); render(); } catch (err) { alerta('No se pudo importar: ' + err.message); }
+        try { const r = importJson(txt, modo); close(); alerta(modo === 'fusionar' ? `Importación lista.\n\nMovimientos nuevos agregados: ${r.nuevos}\nMovimientos que ya existían (omitidos, no se repiten): ${r.omitidos}\nDeudas nuevas: ${r.deudasNuevas} · ya existentes (omitidas): ${r.deudasOmitidas}` : 'Respaldo importado.'); render(); } catch (err) { alerta('No se pudo importar: ' + err.message); }
       };
     });
   };
