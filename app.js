@@ -7,7 +7,8 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const p2 = n => String(n).padStart(2, '0');
-const dinero = v => '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MON = (() => { try { return /-(ES|DE|FR|IT|PT|NL|BE|AT|IE|FI|GR|LU|SK|SI|EE|LV|LT|MT|CY|HR)$/i.test(navigator.language || '') ? '€' : '$'; } catch (e) { return '$'; } })();
+const dinero = v => MON + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const corto = v => { const a = Math.abs(v); if (a >= 1e6) return (v / 1e6).toFixed(1) + 'M'; if (a >= 1e3) return (v / 1e3).toFixed(1) + 'k'; return v.toFixed(0); };
 const toIso = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 const fromIso = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -34,7 +35,7 @@ const COLORES = ['#E5484D', '#F59E0B', '#4F8CFF', '#7C5CFC', '#2FA36B', '#E91E63
 
 // ---------- almacenamiento ----------
 const KEY = 'iffyware_contable_v1';
-const VERSION = '2026.10.26';
+const VERSION = '2026.10.27';
 let D;
 const vacio = () => ({ config: {}, movimientos: [], cuentas_por_pagar: [], cuentas: [], beneficiarios: [], seq: { m: 0, d: 0, c: 0, b: 0 } });
 function cargar() {
