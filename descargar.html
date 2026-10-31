@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12141c">
+<title>Balance personal — Instalar</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#12141c;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center}
+main{max-width:380px;padding:24px}img{width:96px;border-radius:20px}
+a,button{display:block;width:100%;box-sizing:border-box;margin:14px 0;padding:16px;border:0;border-radius:12px;background:#2FA36B;color:#fff;font-size:18px;font-weight:700;text-decoration:none;cursor:pointer}
+small{color:#9aa4b2;display:block;margin-top:18px}.oculto{display:none}
+</style></head><body><main>
+<img src="assets/icon_192.png" alt="">
+<h1>Balance personal</h1>
+<div id="android" class="oculto">
+  <button id="btn">Instalar en el celular</button>
+  <small id="ayuda">Si no aparece el aviso: menú ⋮ de Chrome → Instalar aplicación.</small>
+</div>
+<div id="windows" class="oculto">
+  <a id="dl" href="https://github.com/Iffylone/balance-personal/releases/latest/download/Instalar_Balance_personal.exe">Descargar para Windows</a>
+  <small>Abrir el archivo → Siguiente → Instalar. Si Windows avisa: "Más información" → "Ejecutar de todas formas".</small>
+</div>
+<div id="otro" class="oculto"><a href="./">Abrir en el navegador</a></div>
+<script>
+const ua=navigator.userAgent;let ev=null;
+const id=/Android/i.test(ua)?'android':/Windows/i.test(ua)?'windows':'otro';
+document.getElementById(id).classList.remove('oculto');
+if(id==='android'){
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+  addEventListener('beforeinstallprompt',e=>{e.preventDefault();ev=e});
+  btn.onclick=async()=>{if(ev){ev.prompt();await ev.userChoice}else{location.href='./'}};
+}
+</script></main></body></html>

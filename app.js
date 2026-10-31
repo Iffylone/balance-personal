@@ -7,8 +7,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const p2 = n => String(n).padStart(2, '0');
-const MON = (() => { try { return /-(ES|DE|FR|IT|PT|NL|BE|AT|IE|FI|GR|LU|SK|SI|EE|LV|LT|MT|CY|HR)$/i.test(navigator.language || '') ? '€' : '$'; } catch (e) { return '$'; } })();
-const dinero = v => MON + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dinero = v => '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const corto = v => { const a = Math.abs(v); if (a >= 1e6) return (v / 1e6).toFixed(1) + 'M'; if (a >= 1e3) return (v / 1e3).toFixed(1) + 'k'; return v.toFixed(0); };
 const toIso = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 const fromIso = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
@@ -35,7 +34,7 @@ const COLORES = ['#E5484D', '#F59E0B', '#4F8CFF', '#7C5CFC', '#2FA36B', '#E91E63
 
 // ---------- almacenamiento ----------
 const KEY = 'iffyware_contable_v1';
-const VERSION = '2026.10.27';
+const VERSION = '2026.10.26';
 let D;
 const vacio = () => ({ config: {}, movimientos: [], cuentas_por_pagar: [], cuentas: [], beneficiarios: [], seq: { m: 0, d: 0, c: 0, b: 0 } });
 function cargar() {
@@ -574,6 +573,7 @@ function programarSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() =>
 function iniciarCicloSync() {
   setInterval(() => { if (sesion && document.visibilityState === 'visible') { if (syncPendienteRender && !$('#overlay').classList.contains('on')) { syncPendienteRender = false; render(); } sincronizar(); } }, 30000);
 }
+const NUBE_URL_DEFECTO = 'PEGAR_PROJECT_URL', NUBE_KEY_DEFECTO = 'PEGAR_ANON_KEY';
 function sheetNube(alTerminar) {
   const st = SS();
   const cuerpo = nubeConectada()
@@ -583,11 +583,10 @@ function sheetNube(alTerminar) {
        <button class="btn gris" id="n_des">Desconectar este equipo</button>`
     : `<p style="color:var(--mut);font-size:14px;margin:0 0 10px">Conectá la nube para que este celular y la PC se mantengan iguales sin exportar ni importar. En la PC: Sincronización en la nube → "Copiar código para conectar el celular".</p>
        <label>Código de la PC (opcional, rellena los 3 primeros campos)</label><input id="n_cod" placeholder="BAL1:…" autocomplete="off">
-       <label>URL del proyecto (https://xxxx.supabase.co)</label><input id="n_url" autocomplete="off" autocapitalize="none">
-       <label>Clave pública (anon public key)</label><input id="n_key" autocomplete="off" autocapitalize="none">
+       <input id="n_url" type="hidden" value="${NUBE_URL_DEFECTO}"><input id="n_key" type="hidden" value="${NUBE_KEY_DEFECTO}">
        <label>Correo de tu cuenta en la nube</label><input id="n_mail" type="email" autocomplete="off" autocapitalize="none">
        <label>Contraseña de la nube</label><input id="n_pass" type="password" autocomplete="off">
-       <label style="display:flex;gap:8px;align-items:center"><input id="n_crear" type="checkbox" style="width:auto;margin:0"> Es la primera vez: crear mi cuenta</label>
+       <label style="display:flex;gap:8px;align-items:center"><input id="n_crear" type="checkbox" checked style="width:auto;margin:0"> Cuenta nueva (desmarcar si ya existe)</label>
        <button class="btn verde" id="n_ok" style="margin-top:12px">Conectar</button>`;
   sheet('Sincronización en la nube', cuerpo, (b, close) => {
     if (nubeConectada()) {
@@ -595,10 +594,10 @@ function sheetNube(alTerminar) {
       $('#n_des', b).onclick = () => { if (confirm('Este equipo dejará de sincronizar. Los datos locales se conservan. ¿Desconectar?')) { nubeDesconectar(); close(); } };
       return;
     }
-    $('#n_cod', b).oninput = e => { try { const [u, k, m] = codigoPC(e.target.value); $('#n_url', b).value = u; $('#n_key', b).value = k; $('#n_mail', b).value = m; } catch (err) { /* aún incompleto */ } };
+    $('#n_cod', b).oninput = e => { try { const [u, k, m] = codigoPC(e.target.value); $('#n_mail', b).value = m; } catch (err) { /* aún incompleto */ } };
     $('#n_ok', b).onclick = async () => {
       const url = $('#n_url', b).value, key = $('#n_key', b).value, mail = $('#n_mail', b).value, pass = $('#n_pass', b).value;
-      if (!(url.trim() && key.trim() && mail.trim() && pass)) return alerta('Completá URL, clave, correo y contraseña.');
+      if (!(url.trim() && key.trim() && mail.trim() && pass)) return alerta('Completá correo y contraseña.');
       $('#n_ok', b).disabled = true; $('#n_ok', b).textContent = 'Conectando…';
       try {
         await nubeIniciar(url, key, mail, pass, $('#n_crear', b).checked);
