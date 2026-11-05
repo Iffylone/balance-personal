@@ -1150,3 +1150,55 @@ def get_resumen_mensual(desde=None, hasta=None, max_meses=12):
         if m == 13:
             y, m = y + 1, 1
     return salida[-max_meses:]
+
+
+# ---------------- GASTO POR BENEFICIARIO (a quién se le paga) ----------------
+SIN_BENEFICIARIO = "(Sin beneficiario)"
+
+
+def get_totales_por_beneficiario(desde=None, hasta=None, tipo="gasto"):
+    """Total por beneficiario dentro del rango [desde, hasta] (AAAA-MM-DD).
+    Agrupa ignorando mayúsculas y espacios repetidos. Excluye transferencias.
+    Devuelve (filas, total_general); filas ordenadas de mayor a menor total."""
+    conn = get_connection()
+    q = ("SELECT origen_destino, monto, fecha FROM movimientos "
+         "WHERE tipo=? AND transferencia_id IS NULL")
+    params = [tipo]
+    if desde:
+        q += " AND fecha >= ?"
+        params.append(desde)
+    if hasta:
+        q += " AND fecha <= ?"
+        params.append(hasta)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    grupos = {}
+    for r in rows:
+        limpio = " ".join((r["origen_destino"] or "").split())
+        clave = limpio.lower() or SIN_BENEFICIARIO.lower()
+        g = grupos.setdefault(clave, {"nombre": limpio or SIN_BENEFICIARIO, "n": 0, "total": 0.0,
+                                      "maximo": 0.0, "ultimo": "", "_f": ""})
+        g["n"] += 1
+        g["total"] += r["monto"]
+        g["maximo"] = max(g["maximo"], r["monto"])
+        if r["fecha"] >= g["_f"]:
+            g["_f"] = r["fecha"]
+            g["ultimo"] = r["fecha"]
+            if limpio:
+                g["nombre"] = limpio
+    total_general = sum(g["total"] for g in grupos.values())
+    filas = []
+    for g in grupos.values():
+        g["prom"] = g["total"] / g["n"]
+        g["pct"] = (g["total"] / total_general * 100) if total_general else 0.0
+        del g["_f"]
+        filas.append(g)
+    filas.sort(key=lambda g: (-g["total"], clave_orden(g["nombre"])))
+    return filas, total_general
+
+
+def get_movimientos_beneficiario(nombre, desde=None, hasta=None, tipo="gasto"):
+    """Movimientos de un beneficiario en el rango, del más reciente al más viejo."""
+    objetivo = _norm(nombre) if nombre != SIN_BENEFICIARIO else ""
+    return [m for m in get_movimientos(desde, hasta, tipo)
+            if _norm(m["origen_destino"]) == objetivo]

@@ -695,6 +695,7 @@ class App(tk.Tk):
         seccion("ANÁLISIS")
         lateral("Reportes", self.modal_reportes)
         lateral("Análisis y gráficos", self.modal_analisis)
+        lateral("Gasto por beneficiario", self.modal_gasto_beneficiario)
         lateral("Calculadora", self.modal_calculadora)
         seccion("DATOS Y SEGURIDAD")
         lateral("Sincronización en la nube", self.modal_nube)
@@ -1939,6 +1940,176 @@ class App(tk.Tk):
         cv.create_text(24, ya - 12, text=f"Promedio {dinero(st['promedio'])}", fill="#F59E0B", anchor="w", font=("Segoe UI", 10, "bold"))
         tk.Label(parent, text="Rojo = día por encima del promedio · Azul = por debajo",
                  font=("Segoe UI", 10), fg=p["fg_muted"]).pack()
+
+    # ---------------- GASTO POR BENEFICIARIO ----------------
+    def modal_gasto_beneficiario(self):
+        """Cuánto se gastó (o ingresó) con cada beneficiario en un rango de fechas."""
+        p = PALETA
+        modal = Ventana(self)
+        modal.configure(bg=p["bg"])
+        modal.title("Gasto por beneficiario")
+        modal.geometry("940x640")
+        modal.transient(self)
+        modal.grab_set()
+
+        tk.Label(modal, text="Gasto por beneficiario", font=("Segoe UI", 15, "bold")).pack(
+            anchor="w", padx=16, pady=(12, 0))
+        tk.Label(modal, text="Cuánto se pagó a cada persona o negocio en el rango elegido. "
+                             "Doble clic en una fila: ver sus movimientos.",
+                 font=("Segoe UI", 9), fg=p["fg_muted"]).pack(anchor="w", padx=16)
+
+        filtros = tk.Frame(modal, bg=p["bg"])
+        filtros.pack(fill="x", padx=16, pady=(10, 6))
+        tk.Label(filtros, text="Desde:").pack(side="left")
+        sel_desde = SelectorFecha(filtros)
+        sel_desde.pack(side="left", padx=(4, 12))
+        tk.Label(filtros, text="Hasta:").pack(side="left")
+        sel_hasta = SelectorFecha(filtros)
+        sel_hasta.pack(side="left", padx=(4, 12))
+        tk.Label(filtros, text="Atajo:").pack(side="left")
+        cb_per = ttk.Combobox(filtros, values=self.PERIODOS, state="readonly", width=16)
+        cb_per.pack(side="left", padx=(4, 12))
+        tk.Label(filtros, text="Tipo:").pack(side="left")
+        cb_tipo = ttk.Combobox(filtros, values=["Gasto", "Ingreso"], state="readonly", width=8)
+        cb_tipo.current(0)
+        cb_tipo.pack(side="left", padx=(4, 0))
+
+        fila2 = tk.Frame(modal, bg=p["bg"])
+        fila2.pack(fill="x", padx=16, pady=(0, 6))
+        tk.Label(fila2, text="Buscar beneficiario:").pack(side="left")
+        var_busca = tk.StringVar()
+        tk.Entry(fila2, textvariable=var_busca, width=26, bg=p["entry_bg"], fg=p["fg"],
+                 insertbackground=p["fg"]).pack(side="left", padx=(4, 12))
+        lbl_total = tk.Label(fila2, text="", font=("Segoe UI", 10, "bold"), fg="white")
+        lbl_total.pack(side="right")
+
+        tf = tk.Frame(modal, bg=p["bg"])
+        tf.pack(fill="both", expand=True, padx=16, pady=(4, 6))
+        cols = ("nombre", "n", "total", "prom", "maximo", "ultimo", "pct")
+        tree = ttk.Treeview(tf, columns=cols, show="headings")
+        for c, t, w, an in (("nombre", "Beneficiario", 280, "w"), ("n", "Pagos", 60, "e"),
+                            ("total", "Total", 120, "e"), ("prom", "Promedio por pago", 130, "e"),
+                            ("maximo", "Pago mayor", 110, "e"), ("ultimo", "Último pago", 100, "center"),
+                            ("pct", "% del total", 80, "e")):
+            tree.heading(c, text=t, anchor=an)
+            tree.column(c, width=w, minwidth=50, anchor=an, stretch=(c == "nombre"))
+        tree.tag_configure("par", background="#171a26")
+        tree.tag_configure("impar", background="#1c2030")
+        tree.pack(fill="both", expand=True, side="left")
+        sc = ttk.Scrollbar(tf, orient="vertical", command=tree.yview)
+        sc.pack(side="right", fill="y")
+        tree.configure(yscroll=sc.set)
+
+        estado = {"filas": [], "total": 0.0}
+
+        def rango():
+            try:
+                d = disp_a_iso(sel_desde.get_disp()) if sel_desde.get_disp() else None
+                h = disp_a_iso(sel_hasta.get_disp()) if sel_hasta.get_disp() else None
+            except ValueError:
+                messagebox.showerror("Error", "Las fechas deben elegirse con el calendario.", parent=modal)
+                return None, None, False
+            if d and h and d > h:
+                messagebox.showerror("Error", "'Desde' no puede ser posterior a 'Hasta'.", parent=modal)
+                return None, None, False
+            return d, h, True
+
+        def tipo_actual():
+            return cb_tipo.get().lower()
+
+        def pintar(_=None):
+            for i in tree.get_children():
+                tree.delete(i)
+            filtro = db.clave_orden(var_busca.get())
+            vis = [f for f in estado["filas"] if filtro in db.clave_orden(f["nombre"])]
+            for i, f in enumerate(vis):
+                tree.insert("", "end", iid=str(i), tags=("par" if i % 2 == 0 else "impar",), values=(
+                    f["nombre"], f["n"], dinero(f["total"]), dinero(f["prom"]), dinero(f["maximo"]),
+                    iso_a_disp(f["ultimo"]), f"{f['pct']:.1f}%"))
+            estado["vis"] = vis
+            suma = sum(f["total"] for f in vis)
+            lbl_total.config(text=f"{len(vis)} beneficiario(s)  ·  Total: {dinero(suma)}")
+
+        def consultar(_=None):
+            d, h, ok = rango()
+            if not ok:
+                return
+            estado["filas"], estado["total"] = db.get_totales_por_beneficiario(d, h, tipo_actual())
+            pintar()
+
+        def al_elegir_atajo(_=None):
+            d, h = self._rango_periodo(cb_per.get())
+            sel_desde.set_iso(d) if d else sel_desde.entry.delete(0, "end")
+            sel_hasta.set_iso(h) if h else sel_hasta.entry.delete(0, "end")
+            consultar()
+
+        def ver_detalle(_=None):
+            sel = tree.selection()
+            if not sel:
+                return
+            f = estado["vis"][int(sel[0])]
+            d, h, ok = rango()
+            if not ok:
+                return
+            movs = db.get_movimientos_beneficiario(f["nombre"], d, h, tipo_actual())
+            det = Ventana(modal)
+            det.configure(bg=p["bg"])
+            det.title(f"Movimientos — {f['nombre']}")
+            det.geometry("820x460")
+            det.transient(modal)
+            tk.Label(det, text=f["nombre"], font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=16, pady=(12, 0))
+            tk.Label(det, text=f"{len(movs)} movimiento(s)  ·  Total: {dinero(sum(m['monto'] for m in movs))}",
+                     fg=p["fg_muted"]).pack(anchor="w", padx=16, pady=(0, 6))
+            fr = tk.Frame(det, bg=p["bg"])
+            fr.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+            tr = ttk.Treeview(fr, columns=("fecha", "categoria", "descripcion", "forma_pago", "cuenta", "monto"),
+                              show="headings")
+            for c, t, w, an in (("fecha", "Fecha", 90, "w"), ("categoria", "Categoría", 150, "w"),
+                                ("descripcion", "Descripción", 220, "w"), ("forma_pago", "Forma de pago", 120, "w"),
+                                ("cuenta", "Cuenta", 110, "w"), ("monto", "Monto", 100, "e")):
+                tr.heading(c, text=t, anchor=an)
+                tr.column(c, width=w, anchor=an, stretch=(c == "descripcion"))
+            tr.pack(fill="both", expand=True, side="left")
+            s2 = ttk.Scrollbar(fr, orient="vertical", command=tr.yview)
+            s2.pack(side="right", fill="y")
+            tr.configure(yscroll=s2.set)
+            for m in movs:
+                tr.insert("", "end", values=(iso_a_disp(m["fecha"]), m["categoria"], m["descripcion"] or "",
+                                             m["forma_pago"] or "", m["cuenta"] or "", dinero(m["monto"])))
+
+        def exportar():
+            if not estado.get("vis"):
+                messagebox.showinfo("Sin datos", "No hay filas para exportar.", parent=modal)
+                return
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")],
+                                                initialfile="gasto_por_beneficiario.csv", parent=modal)
+            if not path:
+                return
+            import csv
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                w = csv.writer(fh)
+                w.writerow(["Beneficiario", "Pagos", "Total", "Promedio por pago", "Pago mayor",
+                            "Último pago", "% del total"])
+                for f in estado["vis"]:
+                    w.writerow([f["nombre"], f["n"], round(f["total"], 2), round(f["prom"], 2),
+                                round(f["maximo"], 2), f["ultimo"], round(f["pct"], 2)])
+            messagebox.showinfo("Listo", f"Exportado a:\n{path}", parent=modal)
+
+        botones = tk.Frame(modal, bg=p["bg"])
+        botones.pack(fill="x", padx=16, pady=(0, 12))
+        tk.Button(botones, text="Consultar", command=consultar, bg="#3B82F6", fg="white",
+                  font=("Segoe UI", 10, "bold"), padx=16, pady=5).pack(side="left")
+        tk.Button(botones, text="Ver movimientos", command=ver_detalle, bg="#4F6BED", fg="white",
+                  padx=12, pady=5).pack(side="left", padx=(8, 0))
+        tk.Button(botones, text="Exportar a CSV", command=exportar, bg="#0E9F8E", fg="white",
+                  padx=12, pady=5).pack(side="left", padx=(8, 0))
+
+        cb_per.bind("<<ComboboxSelected>>", al_elegir_atajo)
+        cb_tipo.bind("<<ComboboxSelected>>", consultar)
+        var_busca.trace_add("write", lambda *_: pintar())
+        tree.bind("<Double-1>", ver_detalle)
+        cb_per.current(1)  # por defecto: este mes
+        al_elegir_atajo()
 
     # ---------------- EXPORTAR / IMPORTAR (migración de PC) ----------------
     def exportar_datos(self):
