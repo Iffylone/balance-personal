@@ -34,7 +34,7 @@ const COLORES = ['#E5484D', '#F59E0B', '#4F8CFF', '#7C5CFC', '#2FA36B', '#E91E63
 
 // ---------- almacenamiento ----------
 const KEY = 'iffyware_contable_v1';
-const VERSION = '2026.10.26';
+const VERSION = '2026.11.05';
 let D;
 const vacio = () => ({ config: {}, movimientos: [], cuentas_por_pagar: [], cuentas: [], beneficiarios: [], seq: { m: 0, d: 0, c: 0, b: 0 } });
 function cargar() {
@@ -805,14 +805,14 @@ function marco(titulo, sub, cuerpo, conFab) {
   if (conFab) { $('#f_gasto').onclick = () => sheetMov('gasto'); $('#f_ing').onclick = () => sheetMov('ingreso'); $('#f_tr').onclick = () => sheetTransf(); }
 }
 function menuMas() {
-  const items = [['cuentas', '🏦 Gestionar cuentas'], ['benef', '👥 Beneficiarios'], ['cats', '🏷️ Categorías'], ['datos', '💾 Respaldo y seguridad']];
+  const items = [['gbenef', '💸 Gasto por beneficiario'], ['cuentas', '🏦 Gestionar cuentas'], ['benef', '👥 Beneficiarios'], ['cats', '🏷️ Categorías'], ['datos', '💾 Respaldo y seguridad']];
   sheet('Más opciones', `<div class="menu">${items.map(([k, t]) => `<button data-v="${k}">${t}</button>`).join('')}<button data-v="_lock" style="color:#ff8f8f">🔒 Bloquear / salir</button></div>`, (b, close) => {
     $$('button', b).forEach(x => x.onclick = () => { close(); x.dataset.v === '_lock' ? bloquear() : go(x.dataset.v); });
   });
 }
 function render() {
   if (!sesion) return;
-  ({ inicio: vInicio, reportes: vReportes, analisis: vAnalisis, deudas: vDeudas, cuentas: vCuentas, benef: vBenef, cats: vCats, datos: vDatos }[vista] || vInicio)();
+  ({ inicio: vInicio, reportes: vReportes, analisis: vAnalisis, deudas: vDeudas, cuentas: vCuentas, benef: vBenef, gbenef: vGastoBenef, cats: vCats, datos: vDatos }[vista] || vInicio)();
 }
 
 // ---------- INICIO ----------
@@ -1098,6 +1098,53 @@ function vBenef() {
       <div class="acts"><button class="btn sm gris" data-rn="${b.id}">Renombrar</button><button class="btn sm gris" data-del="${b.id}">Eliminar</button></div></div>`).join('') || '<div class="vacio">Todavía no hay beneficiarios.</div>'}`);
   $$('[data-rn]').forEach(x => x.onclick = () => { const b = D.beneficiarios.find(y => y.id === +x.dataset.rn); const n = window.prompt('Nuevo nombre:', b.nombre); if (n && norm(n)) { renameBenef(b.id, n); render(); } });
   $$('[data-del]').forEach(x => x.onclick = () => { if (confirm('¿Quitar de la lista? Los movimientos no se borran.')) { delBenef(+x.dataset.del); render(); } });
+}
+function totalesPorBenef(desde, hasta, tipo) {
+  const g = {}; let total = 0;
+  for (const m of D.movimientos) {
+    if (m.tipo !== tipo || m.transferencia_id != null || (desde && m.fecha < desde) || (hasta && m.fecha > hasta)) continue;
+    const nombre = norm(m.origen_destino), k = nombre.toLowerCase() || '(sin beneficiario)';
+    const x = g[k] = g[k] || { nombre: nombre || '(Sin beneficiario)', n: 0, total: 0, maximo: 0, ultimo: '', movs: [] };
+    x.n++; x.total += m.monto; x.maximo = Math.max(x.maximo, m.monto); x.movs.push(m);
+    if (m.fecha >= x.ultimo) { x.ultimo = m.fecha; if (nombre) x.nombre = nombre; }
+    total += m.monto;
+  }
+  const filas = Object.values(g).sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, 'es'));
+  for (const f of filas) { f.prom = f.total / f.n; f.pct = total ? f.total / total * 100 : 0; f.movs.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id); }
+  return { filas, total };
+}
+let gb = { periodo: 'Este mes', desde: '', hasta: '', tipo: 'gasto', q: '' };
+function vGastoBenef() {
+  if (!gb.desde && !gb.hasta && gb.periodo) { const [d, h] = rangoPeriodo(gb.periodo); gb.desde = d || ''; gb.hasta = h || ''; }
+  marco('Gasto por beneficiario', '', `
+    <div class="row2"><div><label>Desde</label><input type="date" id="g_d" value="${gb.desde}"></div><div><label>Hasta</label><input type="date" id="g_h" value="${gb.hasta}"></div></div>
+    <div class="row2"><div><label>Atajo</label><select id="g_p"><option value="">Personalizado</option>${opt(PERIODOS, gb.periodo)}</select></div>
+    <div><label>Tipo</label><select id="g_t"><option value="gasto"${gb.tipo === 'gasto' ? ' selected' : ''}>Gasto</option><option value="ingreso"${gb.tipo === 'ingreso' ? ' selected' : ''}>Ingreso</option></select></div></div>
+    <label>Buscar beneficiario</label><input type="text" id="g_q" value="${esc(gb.q)}" placeholder="Nombre…">
+    <div id="g_res"></div>`);
+  const pintar = () => {
+    gb.desde = $('#g_d').value; gb.hasta = $('#g_h').value; gb.tipo = $('#g_t').value; gb.q = $('#g_q').value;
+    const r = totalesPorBenef(gb.desde, gb.hasta, gb.tipo);
+    const q = gb.q.toLowerCase(), vis = r.filas.filter(f => f.nombre.toLowerCase().includes(q));
+    const suma = vis.reduce((s, f) => s + f.total, 0);
+    $('#g_res').innerHTML = `<div class="bar"><span>${vis.length} beneficiario(s) · Total <b class="${gb.tipo === 'gasto' ? 'neg' : 'pos'}">${dinero(suma)}</b></span><button class="btn sm gris" id="g_csv">Exportar CSV</button></div>
+      ${vis.map((f, i) => `<div class="lst" data-i="${i}"><div class="t"><b>${esc(f.nombre)}</b><b>${dinero(f.total)}</b></div>
+        <small>${f.n} pago(s) · prom. ${dinero(f.prom)} · mayor ${dinero(f.maximo)} · último ${isoDisp(f.ultimo)} · ${f.pct.toFixed(1)}%</small></div>`).join('') || '<div class="vacio">Sin movimientos en este rango.</div>'}`;
+    $$('#g_res .lst').forEach(el => el.onclick = () => {
+      const f = vis[+el.dataset.i];
+      sheet(f.nombre, `<p style="color:var(--mut);font-size:14px">${f.n} movimiento(s) · ${dinero(f.total)}</p>${f.movs.map(ticket).join('')}`, () => {});
+    });
+    $('#g_csv').onclick = () => {
+      const c = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+      const txt = [['Beneficiario', 'Pagos', 'Total', 'Promedio por pago', 'Pago mayor', 'Ultimo pago', '% del total'].map(c).join(',')]
+        .concat(vis.map(f => [f.nombre, f.n, f.total.toFixed(2), f.prom.toFixed(2), f.maximo.toFixed(2), f.ultimo, f.pct.toFixed(2)].map(c).join(','))).join('\n');
+      descargar(`gasto_por_beneficiario_${hoyIso()}.csv`, '\ufeff' + txt, 'text/csv;charset=utf-8');
+    };
+  };
+  $('#g_p').onchange = () => { gb.periodo = $('#g_p').value; if (gb.periodo) { const [d, h] = rangoPeriodo(gb.periodo); $('#g_d').value = d || ''; $('#g_h').value = h || ''; } pintar(); };
+  ['#g_d', '#g_h'].forEach(x => $(x).onchange = () => { $('#g_p').value = ''; gb.periodo = ''; pintar(); });
+  $('#g_t').onchange = pintar; $('#g_q').oninput = pintar;
+  pintar();
 }
 function vCats() {
   const L = categoriasResumen();
